@@ -1,0 +1,26 @@
+services:
+  fix-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: fix-server
+    hostname: fix-server
+    ports:
+      - "5001:5001"
+    networks:
+      - fixnet
+
+  fix-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    container_name: fix-client
+    hostname: fix-client
+    depends_on:
+      - fix-server
+    networks:
+      - fixnet
+
+networks:
+  fixnet:
+    driver: bridge
