@@ -1,7 +1,9 @@
 FROM gcc:13
 
 WORKDIR /app
+COPY fix_message.hpp .
 COPY client.cpp .
 RUN g++ -std=c++17 -Wall -Wextra -O2 client.cpp -o client
 
-CMD ["./client", "fix-server"]
+# Hostname of the server is injected via docker-compose environment variable
+CMD ["sh", "-c", "./client ${FIX_SERVER_HOST:-fix-server}"]

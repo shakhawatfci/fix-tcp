@@ -9,6 +9,13 @@ services:
       - "5001:5001"
     networks:
       - fixnet
+    restart: unless-stopped
+    # Healthcheck: nc probes TCP port 5001 so client waits until it's open
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/5001"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
 
   fix-client:
     build:
@@ -17,9 +24,13 @@ services:
     container_name: fix-client
     hostname: fix-client
     depends_on:
-      - fix-server
+      fix-server:
+        condition: service_healthy    # waits for healthcheck to pass
+    environment:
+      - FIX_SERVER_HOST=fix-server
     networks:
       - fixnet
+    restart: on-failure
 
 networks:
   fixnet:

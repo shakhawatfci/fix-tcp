@@ -1,6 +1,7 @@
 FROM gcc:13
 
 WORKDIR /app
+COPY fix_message.hpp .
 COPY server.cpp .
 RUN g++ -std=c++17 -Wall -Wextra -O2 server.cpp -o server
 
