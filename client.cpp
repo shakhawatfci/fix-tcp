@@ -4,9 +4,12 @@
 // Receives and parses any replies from the server.
 
 #include <arpa/inet.h>
+#include <chrono>
 #include <csignal>
 #include <cstring>
 #include <fcntl.h>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -21,6 +24,59 @@ static const int    PORT        = 5001;
 static const char*  SENDER_ID   = "CLIENT";
 static const char*  TARGET_ID   = "SERVER";
 static const int    HB_INTERVAL = 30;   // seconds
+
+static const std::string LOG_DIR      = "logs/clients";
+static const std::string IN_LOG_PATH  = LOG_DIR + "/in.log";
+static const std::string OUT_LOG_PATH = LOG_DIR + "/out.log";
+
+static std::ofstream g_inLog;
+static std::ofstream g_outLog;
+
+static std::string utcLogTime() {
+    using namespace std::chrono;
+    auto now = system_clock::now();
+    auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
+    std::time_t t = system_clock::to_time_t(now);
+    std::tm tm{};
+#if defined(_WIN32)
+    gmtime_s(&tm, &t);
+#else
+    gmtime_r(&t, &tm);
+#endif
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y%m%d-%H:%M:%S", &tm);
+    char out[48];
+    snprintf(out, sizeof(out), "%s.%03d", buf, static_cast<int>(ms.count()));
+    return std::string(out);
+}
+
+static void initLogFiles() {
+    std::error_code ec;
+    std::filesystem::create_directories(LOG_DIR, ec);
+    if (ec) {
+        std::cerr << "Failed to create log directory " << LOG_DIR << ": " << ec.message() << "\n";
+    }
+    g_inLog.open(IN_LOG_PATH, std::ios::out | std::ios::app);
+    if (!g_inLog.is_open()) {
+        std::cerr << "Failed to open " << IN_LOG_PATH << " for writing\n";
+    }
+    g_outLog.open(OUT_LOG_PATH, std::ios::out | std::ios::app);
+    if (!g_outLog.is_open()) {
+        std::cerr << "Failed to open " << OUT_LOG_PATH << " for writing\n";
+    }
+}
+
+static void logInMessage(const std::string& rawMsg) {
+    if (g_inLog.is_open()) {
+        g_inLog << utcLogTime() << "  " << rawMsg << "\n" << std::flush;
+    }
+}
+
+static void logOutMessage(const std::string& rawMsg) {
+    if (g_outLog.is_open()) {
+        g_outLog << utcLogTime() << "  " << rawMsg << "\n" << std::flush;
+    }
+}
 
 static volatile bool running = true;
 
@@ -61,6 +117,7 @@ static bool sendFix(int fd, const FixMessage& msg) {
     std::string raw = msg.serialize();
     ssize_t sent = send(fd, raw.data(), raw.size(), 0);
     if (sent < 0) { perror("send"); return false; }
+    logOutMessage(raw);
     std::cout << "[TX] " << msg.pretty() << "\n";
     return true;
 }
@@ -72,6 +129,8 @@ int main(int argc, char* argv[]) {
 
     signal(SIGINT,  sigHandler);
     signal(SIGTERM, sigHandler);
+
+    initLogFiles();
 
     const char* serverHost = (argc > 1) ? argv[1] : "fix-server";
 
@@ -136,6 +195,8 @@ int main(int argc, char* argv[]) {
             std::string rawMsg = pending.substr(0, eom + 1);
             pending.erase(0, eom + 1);
 
+            logInMessage(rawMsg);
+
             FixMessage reply = FixMessage::parse(rawMsg);
             std::string msgType = reply.get(tag::MsgType, "?");
             std::cout << "[RX] " << reply.pretty() << "\n";
@@ -163,5 +224,7 @@ int main(int argc, char* argv[]) {
     sendFix(sock, logout);
 
     close(sock);
+    if (g_inLog.is_open())  g_inLog.close();
+    if (g_outLog.is_open()) g_outLog.close();
     return 0;
 }

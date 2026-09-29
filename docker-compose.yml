@@ -28,6 +28,8 @@ services:
         condition: service_healthy    # waits for healthcheck to pass
     environment:
       - FIX_SERVER_HOST=fix-server
+    volumes:
+      - ./logs/clients:/app/logs/clients
     networks:
       - fixnet
     restart: on-failure
